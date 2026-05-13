@@ -1,0 +1,65 @@
+{
+  "project": "openpose_to_smplx_dataset_pipeline",
+  "licensing_concerns": {
+    "summary": [
+      "Rendered outputs are generally safer to publish than original SMPL-X assets.",
+      "SMPL-X, SMPL, VPoser and human_body_prior assets should not be redistributed.",
+      "Avoid publishing pretrained checkpoints, original model files, or reconstructable parameter artifacts."
+    ],
+    "safe_to_publish": [
+      "depth maps",
+      "lineart renders",
+      "normal maps",
+      "mask renders",
+      "OpenPose JSON files",
+      "bone structure PNG files",
+      "custom scripts",
+      "Blender automation scripts",
+      "dataset tooling"
+    ],
+    "do_not_publish": [
+      "SMPLX_MALE.npz",
+      "SMPLX_FEMALE.npz",
+      "SMPLX_NEUTRAL.npz",
+      "SMPL_MALE.pkl",
+      "SMPL_FEMALE.pkl",
+      "SMPL_NEUTRAL.pkl",
+      "VPoser checkpoints (*.ckpt)",
+      "human_body_prior pretrained weights",
+      "model_config.yaml from pretrained VPoser packages",
+      "experiment snapshots",
+      "original pretrained model assets"
+    ],
+    "possibly_problematic": [
+      ".obj meshes with original SMPL-X topology",
+      ".fbx exports containing original rigging",
+      ".glb exports containing original blendshapes",
+      "parameter files containing pose/betas/expression data"
+    ],
+    "recommended_public_structure": {
+      "public_repo": [
+        "scripts/",
+        "blender/",
+        "dataset_renders/"
+      ],
+      "private_assets": [
+        "models/",
+        "smplx/",
+        "vposer/",
+        "checkpoints/",
+        "weights/"
+      ]
+    },
+    "recommended_licenses": {
+      "dataset": [
+        "CC-BY-NC 4.0",
+        "CC-BY-NC-SA 4.0"
+      ],
+      "code": [
+        "Apache-2.0",
+        "MIT"
+      ]
+    },
+    "important_note": "Apache-2.0 is not compatible with a non-commercial restriction because Apache explicitly allows commercial use."
+  }
+}

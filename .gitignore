@@ -1,0 +1,110 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments and local config
+.venv/
+venv/
+env/
+.env
+.env.*
+.vscode/
+
+# ComfyUI / PAL generated runtime files
+pose_registry_cache.json
+pose_registry_cache.json.*
+pose_asset_audit_report.*
+missing_depth_files.json
+debug_log.txt
+codex_context.txt
+web/pose_thumbnails/
+WIP_extractor_keys/
+zusätzliche_posen.txt
+
+# Large local datasets and exported archives
+dataset/
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+models/
+openpose/
+
+# Local third-party checkout kept outside the root repository
+human_body_prior/
+
+# Private pretrained assets - do not redistribute
+smplx/
+vposer/
+checkpoints/
+weights/
+human_body_prior/support_data/dowloads/
+human_body_prior/support_data/downloads/
+human_body_prior/**/trained_models/
+human_body_prior/**/checkpoints/
+human_body_prior/**/snapshots/
+**/snapshots/
+**/experiment_snapshots/
+SMPLX_*.npz
+SMPL_*.pkl
+*.ckpt
+*.pt
+*.pth
+
+# Potentially reconstructable SMPL-X outputs
+dataset/smplx/
+dataset/poses_normal/smplx/
+dataset/poses_complex/smplx/
+**/smplx_output/
+**/smplx_outputs/
+**/fit_results/
+**/fitting_results/
+*.obj
+*.mtl
+*.fbx
+*.glb
+*.gltf
+*.ply
+*.stl
+*.blend
+*.blend1
+*.blend2
+*pose*.npz
+*betas*.npz
+*expression*.npz
+*params*.npz
+*parameters*.npz
+*pose*.pkl
+*betas*.pkl
+*expression*.pkl
+*params*.pkl
+*parameters*.pkl
+
+
+# Local editor state
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace 
+
+# Temporary/debug output
+*.tmp
+*.bak
+*.log
+tmp/
+temp/
+scratch/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

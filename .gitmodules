@@ -1,0 +1,4 @@
+[submodule "smplify-x"]
+	path = smplify-x
+	url = https://github.com/palbiez/smplify-x.git
+	branch = master
