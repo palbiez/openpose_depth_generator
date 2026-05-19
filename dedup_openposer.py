@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 
-DATASET_ROOT = Path(r"C:\Users\firew\Documents\python_scripts\openpose_pipeline\dataset")
+DATASET_ROOT = Path(r"C:\Users\firew\Documents\python_scripts\openpose_pipeline\dataset\poses_complex")
 
 KEYPOINTS_DIR = DATASET_ROOT / "keypoints"
 IMAGES_DIR = DATASET_ROOT / "images"
