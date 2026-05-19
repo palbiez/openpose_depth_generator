@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import pickle
 import sys
 import traceback
-from math import atan, atan2, radians
+from math import atan, radians
 from pathlib import Path
 
 import bmesh
@@ -326,6 +327,8 @@ def load_smplifyx_camera(pkl_path: Path) -> tuple[Matrix, Vector]:
     translation_values = flatten_numeric(data["camera_translation"])
     if len(rotation_values) < 9 or len(translation_values) < 3:
         raise RuntimeError(f"Invalid SMPLify-X camera arrays in {pkl_path}")
+    if not all(math.isfinite(value) for value in rotation_values[:9] + translation_values[:3]):
+        raise RuntimeError(f"Non-finite SMPLify-X camera values in {pkl_path}")
 
     rotation = Matrix(
         (
@@ -346,6 +349,8 @@ def projected_pixel_bounds(
 ) -> tuple[float, float, float, float]:
     pixels: list[tuple[float, float]] = []
     for vert in vertices:
+        if not all(math.isfinite(value) for value in (vert.x, vert.y, vert.z)):
+            raise RuntimeError("Cannot project SMPLify-X mesh: non-finite vertex coordinates")
         depth = -vert.z
         if depth <= 1e-6:
             continue
@@ -383,32 +388,23 @@ def auto_upright_smplifyx_meshes(objects: list[bpy.types.Object]) -> bool:
     body_center = (min_v + max_v) * 0.5
 
     head_vector = head_center - body_center
-    if abs(head_vector.x) < 1e-6 and head_vector.y >= 0:
+    # Preserve the source bone-structure image orientation. Only fix the
+    # obvious upside-down case where the head is below the body center and the
+    # body/head axis is already near vertical. Do not rotate lying or diagonal
+    # poses into an artificial standing pose.
+    if head_vector.y >= 0:
         return False
 
-    rotation_angle = atan2(head_vector.x, head_vector.y)
-    if abs(rotation_angle) < 1e-4 and head_vector.y >= 0:
+    verticality = abs(head_vector.y) / max(head_vector.length, 1e-6)
+    if verticality < 0.85:
         return False
 
-    rotation = Matrix.Rotation(rotation_angle, 4, "Z")
+    rotation = Matrix.Rotation(radians(180.0), 4, "Z")
     transform = Matrix.Translation(body_center) @ rotation @ Matrix.Translation(-body_center)
     for obj in objects:
         obj.matrix_world = transform @ obj.matrix_world
 
     bpy.context.view_layer.update()
-
-    landmark_estimate = estimate_head_from_landmarks(objects)
-    if landmark_estimate is not None:
-        head_center, _, _ = landmark_estimate
-        min_v, max_v, _ = mesh_bounds(objects)
-        body_center = (min_v + max_v) * 0.5
-        if head_center.y < body_center.y:
-            rotation = Matrix.Rotation(radians(180.0), 4, "Z")
-            transform = Matrix.Translation(body_center) @ rotation @ Matrix.Translation(-body_center)
-            for obj in objects:
-                obj.matrix_world = transform @ obj.matrix_world
-            bpy.context.view_layer.update()
-
     return True
 
 
@@ -577,6 +573,9 @@ def world_vertices(objects: list[bpy.types.Object]) -> list[Vector]:
         if obj.type != "MESH":
             continue
         verts.extend(obj.matrix_world @ vert.co for vert in obj.data.vertices)
+    for vert in verts:
+        if not all(math.isfinite(value) for value in (vert.x, vert.y, vert.z)):
+            raise RuntimeError("Mesh contains non-finite vertex coordinates")
     return verts
 
 
