@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import List, Optional
 
 
-DATASET_ROOT = Path(r"C:\Users\firew\Documents\python_scripts\openpose_pipeline\dataset")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DATASET_ROOT = PROJECT_ROOT / "dataset"
 
 JSON_ROOTS = [
     DATASET_ROOT / "keypoints",

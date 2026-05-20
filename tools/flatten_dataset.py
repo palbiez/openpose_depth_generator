@@ -4,24 +4,18 @@ import shutil
 from pathlib import Path
 
 
-# SOURCE ROOTS
-KEYPOINTS_SRC = Path(
-    r"C:\Users\firew\Documents\python_scripts\openpose_pipeline\dataset\keypoints"
-)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-IMAGES_SRC = Path(
-    r"C:\Users\firew\Documents\python_scripts\openpose_pipeline\dataset\images"
-)
+# SOURCE ROOTS
+KEYPOINTS_SRC = PROJECT_ROOT / "dataset" / "keypoints"
+
+IMAGES_SRC = PROJECT_ROOT / "dataset" / "images"
 
 
 # FLAT TARGETS
-KEYPOINTS_DST = Path(
-    r"C:\Users\firew\Documents\python_scripts\openpose_pipeline\dataset\keypoints"
-)
+KEYPOINTS_DST = PROJECT_ROOT / "dataset" / "keypoints"
 
-IMAGES_DST = Path(
-    r"C:\Users\firew\Documents\python_scripts\openpose_pipeline\dataset\images"
-)
+IMAGES_DST = PROJECT_ROOT / "dataset" / "images"
 
 
 VALID_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}

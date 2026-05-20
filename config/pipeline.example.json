@@ -1,0 +1,22 @@
+{
+  "run_full_pipeline": {
+    "category": "all",
+    "python_exe": "python",
+    "blender_exe": "C:/Program Files/Blender Foundation/Blender 5.1/blender.exe",
+    "render_output_root": "dataset/rendered",
+    "work_root": "dataset/_pipeline_work",
+    "log_root": "dataset/pipeline_logs",
+    "passes": ["depth", "lineart", "normal"],
+    "resolution": "512x768",
+    "render_camera_mode": "smplifyx",
+    "render_focal_length": 5000,
+    "render_auto_frame": true,
+    "render_frame_padding": 1.04,
+    "gender": "female",
+    "max_persons": 1,
+    "use_cuda": true,
+    "auto_upright": false,
+    "debug_output": true,
+    "show_subprocess_output": false
+  }
+}

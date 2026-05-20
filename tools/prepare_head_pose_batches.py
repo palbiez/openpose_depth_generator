@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATASET_ROOT = PROJECT_ROOT / "dataset"
 DEFAULT_OUTPUT_ROOT = DATASET_ROOT / "head_pose_batches"
 IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp"]

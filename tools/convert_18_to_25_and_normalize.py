@@ -5,8 +5,9 @@ from pathlib import Path
 from typing import List, Sequence
 
 
-INPUT_DIR = Path(r"C:\Users\firew\Documents\python_scripts\openpose_pipeline\dataset\keypoints-18")
-OUTPUT_DIR = Path(r"C:\Users\firew\Documents\python_scripts\openpose_pipeline\dataset\keypoints")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+INPUT_DIR = PROJECT_ROOT / "dataset" / "keypoints-18"
+OUTPUT_DIR = PROJECT_ROOT / "dataset" / "keypoints"
 
 
 def pt(points: Sequence[float], idx: int) -> List[float]:

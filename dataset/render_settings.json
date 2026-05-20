@@ -1,0 +1,16 @@
+{
+  "resolution": "512x768",
+  "passes": ["depth", "lineart", "normal"],
+  "camera_mode": "smplifyx",
+  "focal_length": 5000,
+  "auto_frame": true,
+  "frame_padding": 1.04,
+  "auto_upright": false,
+  "obj_axis_mode": "smplx-y-up",
+  "mesh_rotation": "0,0,0",
+  "notes": [
+    "Use the saved SMPLify-X perspective camera from results/<pose_id>/000.pkl.",
+    "Do not enable auto_upright for normal runs; output orientation should follow the source bone-structure image.",
+    "Rendered pass PNGs and SMPL-X meshes/PKLs are local generated artifacts and are ignored by Git."
+  ]
+}

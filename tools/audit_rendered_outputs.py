@@ -16,7 +16,7 @@ import numpy as np
 from PIL import Image
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATASET_ROOT = PROJECT_ROOT / "dataset"
 DEFAULT_RENDER_ROOT = DATASET_ROOT / "rendered"
 DEFAULT_REPORT_ROOT = DATASET_ROOT / "render_audits"

@@ -323,6 +323,15 @@ def load_smplifyx_camera(pkl_path: Path) -> tuple[Matrix, Vector]:
     if "camera_rotation" not in data or "camera_translation" not in data:
         raise RuntimeError(f"Missing camera_rotation/camera_translation in {pkl_path}")
 
+    for key in ("camera_rotation", "camera_translation", "global_orient", "body_pose", "betas"):
+        if key not in data:
+            raise RuntimeError(f"Missing SMPLify-X fit key {key} in {pkl_path}")
+        values = flatten_numeric(data[key])
+        if not values:
+            raise RuntimeError(f"Empty SMPLify-X fit key {key} in {pkl_path}")
+        if not all(math.isfinite(value) for value in values):
+            raise RuntimeError(f"Non-finite SMPLify-X fit values in {key}: {pkl_path}")
+
     rotation_values = flatten_numeric(data["camera_rotation"])
     translation_values = flatten_numeric(data["camera_translation"])
     if len(rotation_values) < 9 or len(translation_values) < 3:
@@ -481,10 +490,10 @@ def setup_smplifyx_camera(
 
     rotation, translation = load_smplifyx_camera(pkl_path)
 
-    # SMPLify-X exports OBJ vertices after a 180 degree X rotation. Its camera
-    # projects the pre-export model in image coordinates. Keep that vertical
-    # image convention and only flip depth into Blender's camera -Z direction.
-    export_flip = Matrix(((1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0)))
+    # SMPLify-X image coordinates already map positive model Y upward after
+    # projection. Only convert the exported depth axis into Blender's camera
+    # -Z direction; flipping Y here would render every pose upside down.
+    export_flip = Matrix(((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, -1.0)))
     camera_depth_flip = Matrix(((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, -1.0)))
     linear = camera_depth_flip @ rotation @ export_flip
     offset = camera_depth_flip @ translation

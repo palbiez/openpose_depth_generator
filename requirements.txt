@@ -1,0 +1,14 @@
+configargparse
+numpy
+opencv-python
+Pillow
+PyYAML
+smplx
+torch
+torchgeometry
+tqdm
+
+# Optional/manual:
+# - Install a PyTorch build that matches your CUDA/CPU environment.
+# - Install human_body_prior from its upstream repository or local checkout.
+# - Blender's bpy/bmesh/mathutils modules come from Blender 5.1, not pip.

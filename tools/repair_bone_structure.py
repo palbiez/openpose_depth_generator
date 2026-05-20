@@ -11,7 +11,7 @@ from typing import Any, Iterable, Sequence
 from PIL import Image, ImageDraw
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "dataset" / "bone_structure_qc" / "redrawn"
 DEFAULT_REPORT = PROJECT_ROOT / "dataset" / "bone_structure_qc" / "report.jsonl"
 DEFAULT_NORMALIZED_ROOT = PROJECT_ROOT / "dataset" / "bone_structure_qc" / "normalized_keypoints"

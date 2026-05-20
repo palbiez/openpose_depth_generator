@@ -1,49 +1,34 @@
 # openpose_depth_generator
 
-Windows pipeline for generating reproducible SMPL-X fits from OpenPose keypoints and bone-structure images, then rendering depth, lineart and normal passes in Blender.
+Windows pipeline for turning OpenPose bone-structure images and keypoint JSON files into SMPL-X depth, lineart and normal renders.
 
-The repository contains pipeline code and project configuration. It deliberately does not contain SMPL-X models, VPoser checkpoints, pretrained weights, generated SMPL-X meshes or reconstructable pose parameter artifacts.
+The repository contains the pipeline code, Blender render script and documentation. It does not include licensed body models, VPoser checkpoints, generated SMPL-X meshes, PKL parameter files or local datasets.
 
-## Current Scope
+## Results
 
-- Normalize OpenPose JSON files to the BODY_25-style 25-keypoint layout expected by the fitting pipeline.
-- Flatten nested pose folders into stable filenames for batch processing.
-- Route poses into `normal` and `complex` batches.
-- Fit SMPL-X via the project `smplify-x` fork.
-- Keep rendered outputs publishable while keeping model assets and reconstructable outputs private.
+| Depth | Lineart | Normal |
+| --- | --- | --- |
+| ![Depth example](docs/images/example_dance_depth.png) | ![Lineart example](docs/images/example_dance_lineart.png) | ![Normal example](docs/images/example_dance_normal.png) |
 
-The pipeline is currently optimized for a Windows-only workflow. Existing helper scripts use absolute Windows paths and should be adjusted before reuse on another machine.
+Additional complex-pose example:
 
-## Repository Layout
+![Kneeling depth example](docs/images/example_kneeling_depth.png)
 
-```text
-.
-|-- README.md
-|-- .gitignore
-|-- .gitmodules
-|-- audit_rendered_outputs.py
-|-- augment_body25_face_keypoints.py
-|-- convert_18_to_25.py
-|-- convert_18_to_25_and_normalize.py
-|-- copy_missing_depth_inputs.py
-|-- dedup_openposer.py
-|-- flatten_dataset.py
-|-- pose_selection.py
-|-- pose_selection2.py
-|-- prepare_head_pose_batches.py
-|-- repair_bone_structure.py
-|-- run_full_pipeline.py
-|-- render_blender_batch.py
-|-- blender/
-|   `-- render_smplx_passes.py
-|-- openpose_pipeline_codex_context.json
-|-- openpose_pipeline_license_notes.json
-`-- smplify-x/                 # submodule: https://github.com/palbiez/smplify-x.git
-```
+## Requirements
 
-Local-only folders such as `dataset/`, `human_body_prior/`, model files, checkpoints and generated mesh outputs are ignored by Git.
+- Windows
+- Python 3.12
+- Blender 5.1
+- Git with submodule support
+- CUDA-capable PyTorch setup recommended for SMPLify-X fitting
+- Licensed/private assets downloaded separately:
+  - SMPL-X model files such as `SMPLX_FEMALE.npz`, `SMPLX_MALE.npz`, `SMPLX_NEUTRAL.npz`
+  - VPoser checkpoint files
+  - `human_body_prior` package/checkpoints
 
-## Git Setup
+The SMPL-X and VPoser assets have their own licenses and redistribution rules. Do not commit them to this repository.
+
+## Setup
 
 Clone with the SMPLify-X fork:
 
@@ -53,311 +38,200 @@ cd openpose_depth_generator
 git submodule update --init --recursive
 ```
 
-If `smplify-x` changes, commit and push inside the submodule first:
+Create and activate a Python 3.12 environment, then install the Python dependencies:
 
 ```powershell
-cd smplify-x
-git status
-git add <files>
-git commit -m "Describe smplify-x change"
-git push origin master
-cd ..
-git add smplify-x
-git commit -m "Update smplify-x submodule"
-git push origin main
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-Root pipeline changes go to:
+Install `human_body_prior` and PyTorch according to your local CUDA/CPU setup. Blender modules such as `bpy`, `bmesh` and `mathutils` are supplied by Blender, not pip.
 
-```text
-https://github.com/palbiez/openpose_depth_generator.git
-```
-
-SMPLify-X changes go to:
-
-```text
-https://github.com/palbiez/smplify-x.git
-```
-
-## Private Assets
-
-Expected local/private data layout:
+Expected private/local layout:
 
 ```text
 dataset/
-|-- images/
-|-- keypoints/
 |-- keypoints-18/
-|-- normal/
-|-- lineart/
-|-- smplx/
+|-- keypoints/
+|-- images/
 |-- poses_normal/
 |-- poses_complex/
-`-- vposer/
+|-- rendered/
+|-- vposer/
+`-- smplx/
 ```
 
-Do not commit or redistribute:
+Only lightweight dataset documentation and placeholder files are tracked by Git. Local source images, keypoints, rendered PNGs, SMPL-X models, VPoser checkpoints and fitted outputs are ignored.
 
-- `SMPLX_MALE.npz`, `SMPLX_FEMALE.npz`, `SMPLX_NEUTRAL.npz`
-- SMPL `.pkl` model files
-- VPoser checkpoints such as `.ckpt`, `.pt`, `.pth`
-- pretrained `human_body_prior` weights
-- generated `.obj`, `.fbx`, `.glb`, `.blend`, `.ply`, `.stl` files
-- pose, betas, expression or parameter files that can reconstruct body shape or motion
+## Configuration
 
-Rendered depth maps, lineart renders, normal maps, masks, OpenPose JSONs, bone-structure PNGs and custom scripts are the intended publishable outputs.
+The pipeline can be driven by command-line options or a JSON config.
+
+Copy the example:
+
+```powershell
+Copy-Item .\config\pipeline.example.json .\config\pipeline.json
+```
+
+Edit local paths in `config/pipeline.json`, especially:
+
+- `python_exe`
+- `blender_exe`
+- `use_cuda`
+- `render_output_root`
+
+Run with config:
+
+```powershell
+py -3 .\run_full_pipeline.py --config .\config\pipeline.json
+```
+
+Command-line arguments override config values.
 
 ## Pipeline
 
-1. Collect source inputs
-
-   Put OpenPose JSON files and matching bone-structure PNG files under the local `dataset/` tree.
-
-2. Audit and redraw bone structures
-
-   Before fitting, check whether the JSON files contain real BODY_18/BODY_25 keypoints. Some legacy files contain raw sampled lineart points in `pose_keypoints_2d`; those can have 80, 94, 120 or similar point counts and cannot be safely converted into OpenPose skeletons.
-
-   Single-file check with diagnostic point plot:
+1. Convert OpenPose BODY_18 JSON files to BODY_25:
 
    ```powershell
-   py -3 .\repair_bone_structure.py --json "C:\EasyDiffusion\stable-diffusion\stable-diffusion-webui\models\openpose\sitting\F\nsfw\sitting\sitting_176_openpose.json" --write-diagnostics
+   py -3 .\tools\convert_18_to_25_and_normalize.py
    ```
 
-   Batch check for routed pipeline inputs:
+2. Flatten nested OpenPose source folders:
 
    ```powershell
-   py -3 .\repair_bone_structure.py --input-root .\dataset\poses_normal\keypoints --input-root .\dataset\poses_complex\keypoints --output-root .\dataset\bone_structure_qc\redrawn --report .\dataset\bone_structure_qc\report.jsonl --write-diagnostics --force
+   py -3 .\tools\flatten_dataset.py
    ```
 
-   Valid 18-point JSONs are converted to BODY_25 for drawing. Valid 25-point JSONs are redrawn directly. Implausible BODY_25 geometry, such as many full-canvas crossing limbs, is reported as invalid and not written as a replacement image unless `--allow-implausible` is used for manual diagnostics.
-
-3. Convert and normalize keypoints
-
-   Use `convert_18_to_25.py` or `convert_18_to_25_and_normalize.py` to convert 18-keypoint inputs to 25 keypoints. Inputs with more than 25 keypoints are clamped by the conversion logic where supported.
-
-4. Flatten filenames
-
-   Use `flatten_dataset.py` when nested folder paths need to be encoded into flat filenames so SMPLify-X can reliably find matching images and keypoints.
-
-5. Route normal vs. complex poses
-
-   Use `pose_selection.py` to move matching images, keypoints and render folders into:
-
-   ```text
-   dataset/poses_normal/
-   dataset/poses_complex/
-   ```
-
-   Normal poses are intended for VPoser-assisted fitting. Complex poses such as kneeling, all-fours, lying, split-leg and dynamic poses should use a more conservative configuration.
-
-6. Add face keypoints from BODY_25 head anchors
-
-   Many source OpenPose JSON files contain only BODY_18/BODY_25 head anchors (`Nose`, `REye`, `LEye`, `REar`, `LEar`) and leave `face_keypoints_2d` empty. SMPLify-X can use face landmarks, but only if `face_keypoints_2d` exists and `use_face: True` is enabled in the fitting config.
-
-   Populate synthetic 68-point `face_keypoints_2d` arrays from the BODY_25 head anchors:
+3. Route files into normal and complex fitting batches:
 
    ```powershell
-   py -3 .\augment_body25_face_keypoints.py --apply
+   py -3 .\tools\pose_selection2.py
    ```
 
-   The script backs up changed keypoint JSON files before writing:
-
-   ```text
-   dataset/backup/keypoints_before_face_augment/<timestamp>/
-   ```
-
-   Dry-run without writing:
+4. Add synthetic face landmarks from BODY_25 head anchors:
 
    ```powershell
-   py -3 .\augment_body25_face_keypoints.py
+   py -3 .\tools\augment_body25_face_keypoints.py --apply
    ```
 
-   After augmentation, the current SMPLify-X configs use `use_face: True`. Because this pipeline fits face landmarks without hand landmarks, the local SMPLify-X fork also patches the SMPL-X OpenPose mapping so face landmark indices start at `66` when `use_hands: False`.
-
-7. Fit SMPL-X
-
-   Use the SMPLify-X configs in the submodule:
-
-   ```text
-   smplify-x/cfg_files/fit_smplx_normal.yaml
-   smplify-x/cfg_files/fit_smplx_komplex.yaml
-   ```
-
-   For the full resumable pipeline, prefer `run_full_pipeline.py` instead of starting SMPLify-X manually. It runs one image/keypoint pair at a time, logs failures and continues with the next item.
-
-   Dry-run:
+5. Run the full resumable SMPLify-X and Blender pipeline:
 
    ```powershell
-   py -3 .\run_full_pipeline.py --dry-run
+   py -3 .\run_full_pipeline.py --config .\config\pipeline.json
    ```
 
-   Small end-to-end test:
+Resume missing work without replacing existing files:
 
-   ```powershell
-   py -3 .\run_full_pipeline.py --category complex --limit 1 --fit-maxiters 1 --passes depth lineart --force-fit --force-render
-   ```
+```powershell
+py -3 .\run_full_pipeline.py --config .\config\pipeline.json --show-subprocess-output
+```
 
-   Full run:
+Re-render existing fits without refitting:
 
-   ```powershell
-   py -3 .\run_full_pipeline.py
-   ```
+```powershell
+py -3 .\run_full_pipeline.py --config .\config\pipeline.json --skip-fit --force-render --backup-cleaned --show-subprocess-output
+```
 
-   Full forced rebuild, including cleanup of old meshes, PKL results, OBJ files and rendered PNGs:
+Full rebuild with cleanup backup:
 
-   ```powershell
-   py -3 .\run_full_pipeline.py --force-fit --force-render --backup-cleaned --show-subprocess-output
-   ```
+```powershell
+py -3 .\run_full_pipeline.py --config .\config\pipeline.json --force-fit --force-render --backup-cleaned --show-subprocess-output
+```
 
-   `--force-fit` alone recomputes meshes/results but does not replace already existing render PNGs. Use `--force-render` whenever depth/lineart/normal outputs must be regenerated.
+By default the renderer uses the saved SMPLify-X perspective camera from `results/<pose_id>/000.pkl`. `--auto-upright` is disabled by default so the output orientation follows the source bone-structure image.
 
-   Resume after interruption or failure by running the same command again. Existing meshes are skipped, and existing render PNGs are skipped:
+## Quality Control
 
-   ```powershell
-   py -3 .\run_full_pipeline.py
-   ```
+Audit generated renders:
 
-   Useful recovery options:
+```powershell
+py -3 .\tools\audit_rendered_outputs.py --required-passes depth,lineart
+```
 
-   ```powershell
-   py -3 .\run_full_pipeline.py --category normal
-   py -3 .\run_full_pipeline.py --category complex
-   py -3 .\run_full_pipeline.py --start-after some_pose_id
-   py -3 .\run_full_pipeline.py --force-fit
-   py -3 .\run_full_pipeline.py --force-render
-   py -3 .\run_full_pipeline.py --skip-fit
-   py -3 .\run_full_pipeline.py --skip-render
-   py -3 .\run_full_pipeline.py --skip-fit --force-render --resolution 768x512 --padding 1.45
-   py -3 .\run_full_pipeline.py --skip-fit --force-render --obj-axis-mode raw
-   py -3 .\run_full_pipeline.py --skip-fit --force-render --mesh-rotation 90,0,0
-   py -3 .\run_full_pipeline.py --pose-id some_pose_id --force-fit --force-render --backup-cleaned
-   ```
+Strict audit and quarantine:
 
-   Logs are written to:
+```powershell
+py -3 .\tools\audit_rendered_outputs.py --required-passes depth,lineart --reject-large-orientation --orientation-review-threshold 2.8 --reject-blank-lineart --apply
+```
 
-   ```text
-   dataset/pipeline_logs/<timestamp>/
-   ```
+Create review batches for weak or missing head/face anchors:
 
-   Each item gets separate `smplifyx.log` and `blender.log` files. The run also writes `events.jsonl`, `summary.json` and `missing_pairs.json` when image/keypoint pairs are incomplete.
+```powershell
+py -3 .\tools\prepare_head_pose_batches.py
+```
 
-8. Render passes in Blender
+## Export Back To WebUI OpenPose Tree
 
-   Import generated SMPL-X meshes locally and render depth, lineart and normal passes. Generated meshes and parameter files stay private.
+Rendered files are stored flat:
 
-   The batch renderer scans these mesh roots by default:
+```text
+dataset/rendered/depth/action_F_base_dancing_openposescollection_v20_dance_01_bone_structure.png
+```
 
-   ```text
-   dataset/poses_normal/smplx/meshes/
-   dataset/poses_complex/smplx/meshes/
-   dataset/smplx/meshes/
-   ```
+Export rewrites them to the nested OpenPose tree:
 
-   Run a dry-run first:
+```text
+C:\EasyDiffusion\stable-diffusion\stable-diffusion-webui\models\openpose\action\F\base\dancing\openposescollection_v20_dance_01_depth.png
+```
 
-   ```powershell
-   py -3 .\render_blender_batch.py --dry-run --limit 5
-   ```
+Dry-run:
 
-   Render all pending active OBJ files:
+```powershell
+py -3 .\tools\export_openpose_outputs.py
+```
 
-   ```powershell
-   py -3 .\render_blender_batch.py
-   ```
+Copy to the WebUI OpenPose folder and create release backups:
 
-   Outputs are written to:
+```powershell
+py -3 .\tools\export_openpose_outputs.py --apply --overwrite
+```
 
-   ```text
-   dataset/rendered/depth/
-   dataset/rendered/lineart/
-   dataset/rendered/normal/
-   dataset/rendered/_manifests/
-   ```
+The export script also writes:
 
-   Useful options:
+```text
+dataset/release_backups/<timestamp>/openpose/
+dataset/release_backups/<timestamp>/source_dataset/rendered/
+dataset/release_backups/<timestamp>/source_dataset/poses_complex/
+dataset/release_backups/<timestamp>/source_dataset/poses_normal/
+dataset/release_backups/<timestamp>/export_report.csv
+dataset/release_backups/<timestamp>/export_report.json
+```
 
-   ```powershell
-   py -3 .\render_blender_batch.py --limit 10 --force
-   py -3 .\render_blender_batch.py --passes depth normal
-   py -3 .\render_blender_batch.py --resolution 512x768
-   py -3 .\render_blender_batch.py --camera-mode smplifyx
-   py -3 .\render_blender_batch.py --camera-mode orthographic
-   py -3 .\render_blender_batch.py --smplifyx-auto-frame
-   py -3 .\render_blender_batch.py --resolution 768x512 --padding 1.45
-   py -3 .\render_blender_batch.py --include-backup
-   py -3 .\render_blender_batch.py --obj-axis-mode smplx-y-up
-   py -3 .\render_blender_batch.py --obj-axis-mode raw
-   py -3 .\render_blender_batch.py --mesh-rotation 90,0,0
-   py -3 .\render_blender_batch.py --head-mode replace --head-scale 0.85
-   py -3 .\render_blender_batch.py --head-mode replace --head-offset 0,0.03,-0.02
-   py -3 .\render_blender_batch.py --blender-exe "C:\Program Files\Blender Foundation\Blender 5.1\blender.exe"
-   ```
+## Repository Layout
 
-   The default pipeline render mode is `--camera-mode smplifyx`. It reads the matching `results/<pose_id>/000.pkl` and uses the saved SMPLify-X camera translation/rotation instead of a generic Blender front view. `--smplifyx-auto-frame` keeps the rendered body inside the image frame while preserving the fitted camera direction.
+```text
+.
+|-- run_full_pipeline.py          # main resumable pipeline
+|-- render_blender_batch.py       # standalone batch renderer wrapper
+|-- blender/
+|   `-- render_smplx_passes.py    # Blender pass renderer
+|-- config/
+|   `-- pipeline.example.json
+|-- docs/
+|   |-- images/
+|   `-- license_notes.json
+|-- tools/
+|   |-- README.md
+|   |-- export_openpose_outputs.py
+|   `-- ...
+|-- smplify-x/                    # submodule/fork with local pipeline patches
+|-- requirements.txt
+`-- README.md
+```
 
-   `--obj-axis-mode smplx-y-up` is the default for old orthographic SMPLify-X OBJ renders. In `--camera-mode smplifyx`, the Blender script imports OBJ files as `raw` internally so the saved camera convention can be reconstructed. Use `--camera-mode orthographic` only for diagnostic renders where a generic view is desired.
+See [tools/README.md](tools/README.md) for helper script descriptions.
 
-   `--head-mode replace` is a legacy diagnostic option for poses without usable head data. In `--camera-mode smplifyx`, the renderer forces the original SMPL-X head to avoid destructive proxy-head replacement.
+## Git Hygiene
 
-9. Quality control
+Do not commit:
 
-   Use `dedup_openposer.py` and manual review to quarantine duplicate, invalid or already processed inputs. Complex poses and head/neck deformation need extra review.
+- local dataset payloads under `dataset/rendered/`, `dataset/poses_normal/`, `dataset/poses_complex/`, `dataset/smplx/` or `dataset/vposer/`
+- SMPL-X model files
+- VPoser checkpoints
+- `human_body_prior` trained weights
+- generated `.obj`, `.pkl`, `.blend`, `.fbx`, `.glb`, `.ply` or `.stl` files
+- local config files such as `config/pipeline.json`
 
-   Audit rendered outputs:
-
-   ```powershell
-   py -3 .\audit_rendered_outputs.py --required-passes depth,lineart
-   ```
-
-   Strict audit that marks large global-orientation fits and blank lineart as reject:
-
-   ```powershell
-   py -3 .\audit_rendered_outputs.py --required-passes depth,lineart --reject-large-orientation --orientation-review-threshold 2.8 --reject-blank-lineart
-   ```
-
-   Move rejected renders to quarantine:
-
-   ```powershell
-   py -3 .\audit_rendered_outputs.py --required-passes depth,lineart --reject-large-orientation --orientation-review-threshold 2.8 --reject-blank-lineart --apply
-   ```
-
-   Create a separate report/batch for poses that still have missing or weak head anchors:
-
-   ```powershell
-   py -3 .\prepare_head_pose_batches.py
-   ```
-
-## Script Notes
-
-- `copy_missing_depth_inputs.py` copies missing input pairs from a source OpenPose tree into the local dataset.
-- `convert_18_to_25.py` converts 18-keypoint JSON files to 25-keypoint JSON files and flattens output names.
-- `convert_18_to_25_and_normalize.py` converts 18-keypoint JSON files while preserving the relative folder layout.
-- `flatten_dataset.py` copies nested keypoint and image files into flat target folders.
-- `pose_selection.py` routes full asset bundles into `poses_normal` or `poses_complex`.
-- `pose_selection2.py` routes images based on existing JSON classification.
-- `dedup_openposer.py` moves processed or invalid inputs into `dataset/backup/`.
-- `repair_bone_structure.py` audits OpenPose JSON files, redraws valid BODY_18/BODY_25 bone-structure PNGs and flags raw sampled point payloads.
-- `augment_body25_face_keypoints.py` writes synthetic 68-point `face_keypoints_2d` arrays from BODY_25 nose/eye/ear anchors and backs up changed JSON files.
-- `prepare_head_pose_batches.py` reports or copies poses with missing/weak head anchors into separate batches.
-- `audit_rendered_outputs.py` audits generated depth/lineart/normal outputs and can quarantine empty or suspicious renders.
-- `run_full_pipeline.py` runs SMPLify-X and Blender per item with resume behavior and error logs.
-- `render_blender_batch.py` discovers pending OBJ files, writes a render manifest and launches Blender.
-- `blender/render_smplx_passes.py` runs inside Blender and renders depth, lineart and normal PNGs.
-
-Before running scripts, check the path constants at the top of each file.
-
-## Known Issues
-
-- Fits can produce unstable heads when `face_keypoints_2d` is missing or empty. Run `augment_body25_face_keypoints.py --apply` before fitting with the current `use_face: True` configs.
-- Synthetic face landmarks are approximate. They stabilize head/face fitting, but they are not a replacement for a real face detector.
-- VPoser helps normal upright poses but can over-constrain complex poses.
-- Kneeling, all-fours, lying and split-leg poses often need separate fitting settings and stricter review.
-- Large `global_orient` values in the fitted PKL often indicate that SMPLify-X used global body rotation to satisfy ambiguous 2D keypoints. Use `audit_rendered_outputs.py` to flag these cases.
-- Some earlier local outputs may be invalid because of old keypoint-count or model-path issues.
-- JSON files with arbitrary point counts such as 90 or 94 in `pose_keypoints_2d` are usually raw sampled image points, not OpenPose BODY_25. They should be quarantined or regenerated from a real pose estimator instead of being clamped to 25 points.
-
-## License Notes
-
-The code in this repository is separate from the licenses for SMPL, SMPL-X, VPoser, `human_body_prior` and any downloaded pretrained assets. Those assets must be obtained and used under their own licenses.
-
-Rendered outputs are generally safer to publish than original model assets or reconstructable geometry, but review the generated dataset before publication.
+The root project is Apache-2.0 licensed. Third-party code and model assets keep their own licenses.

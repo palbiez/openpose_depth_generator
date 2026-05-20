@@ -15,6 +15,8 @@ env/
 .env
 .env.*
 .vscode/
+config/pipeline.json
+config/*.local.json
 
 # ComfyUI / PAL generated runtime files
 pose_registry_cache.json
@@ -27,8 +29,9 @@ web/pose_thumbnails/
 WIP_extractor_keys/
 zusätzliche_posen.txt
 
-# Large local datasets and exported archives
-dataset/
+# Large local/generated datasets and exported archives
+exports/
+release_backups/
 *.zip
 *.7z
 *.rar
@@ -59,7 +62,45 @@ SMPL_*.pkl
 *.pth
 
 # Potentially reconstructable SMPL-X outputs
-dataset/smplx/
+dataset/_*/
+dataset/backup/
+dataset/files_new/
+dataset/pipeline_logs/
+dataset/rejected_renders/
+dataset/release_backups/
+dataset/render_audits/
+dataset/face_keypoint_augments/
+dataset/head_pose_batches/
+dataset/bone_structure_qc/
+dataset/camera_qc/
+dataset/images/*
+dataset/keypoints/*
+dataset/keypoints-18/*
+dataset/lineart/*
+dataset/normal/*
+!dataset/images/.gitkeep
+!dataset/keypoints/.gitkeep
+!dataset/keypoints-18/.gitkeep
+!dataset/lineart/.gitkeep
+!dataset/normal/.gitkeep
+dataset/rendered/depth/
+dataset/rendered/lineart/
+dataset/rendered/normal/
+dataset/rendered/_manifests/
+dataset/poses_normal/**
+dataset/poses_complex/**
+!dataset/poses_normal/
+!dataset/poses_complex/
+!dataset/poses_normal/.gitkeep
+!dataset/poses_complex/.gitkeep
+!dataset/poses_normal/README.md
+!dataset/poses_complex/README.md
+dataset/smplx/**
+dataset/vposer/**
+!dataset/smplx/
+!dataset/vposer/
+!dataset/smplx/.gitkeep
+!dataset/vposer/.gitkeep
 dataset/poses_normal/smplx/
 dataset/poses_complex/smplx/
 **/smplx_output/
@@ -103,8 +144,10 @@ dataset/poses_complex/smplx/
 tmp/
 temp/
 scratch/
+__pycache__/
 
 # OS files
 .DS_Store
+._*
 Thumbs.db
 desktop.ini

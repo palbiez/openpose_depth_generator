@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import pickle
 import queue
 import shutil
 import subprocess
@@ -19,7 +21,7 @@ DATASET_ROOT = PROJECT_ROOT / "dataset"
 SMPLIFYX_ROOT = PROJECT_ROOT / "smplify-x"
 SMPLIFYX_MAIN = SMPLIFYX_ROOT / "smplifyx" / "main.py"
 RENDER_RUNNER = PROJECT_ROOT / "render_blender_batch.py"
-DEFAULT_PYTHON = Path("C:/Users/firew/Documents/python_scripts/venv312/Scripts/python.exe")
+DEFAULT_PYTHON = Path(sys.executable)
 DEFAULT_BLENDER = Path("C:/Program Files/Blender Foundation/Blender 5.1/blender.exe")
 DEFAULT_RESOLUTION = "512x768"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -48,6 +50,10 @@ class PoseItem:
     @property
     def mesh_path(self) -> Path:
         return self.mesh_dir / "000.obj"
+
+    @property
+    def result_path(self) -> Path:
+        return self.category.output_root / "results" / self.pose_id / "000.pkl"
 
 
 CATEGORIES = {
@@ -154,6 +160,8 @@ def clean_render_pass_dirs(args: argparse.Namespace, backup_root: Path | None) -
 
 def parse_passes(raw: Sequence[str]) -> list[str]:
     passes: list[str] = []
+    if isinstance(raw, str):
+        raw = [raw]
     for value in raw:
         passes.extend(part.strip().lower() for part in value.split(",") if part.strip())
 
@@ -171,6 +179,50 @@ def parse_passes(raw: Sequence[str]) -> list[str]:
 
 def render_outputs_exist(pose_id: str, output_root: Path, passes: Sequence[str]) -> bool:
     return all((output_root / pass_name / f"{pose_id}.png").exists() for pass_name in passes)
+
+
+def flatten_numeric(value: object) -> list[float]:
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    if isinstance(value, (int, float)):
+        return [float(value)]
+    out: list[float] = []
+    for item in value:  # type: ignore[union-attr]
+        out.extend(flatten_numeric(item))
+    return out
+
+
+def validate_fit_outputs(item: PoseItem) -> list[str]:
+    errors: list[str] = []
+
+    if not item.mesh_path.exists():
+        errors.append(f"missing mesh: {item.mesh_path}")
+    if not item.result_path.exists():
+        errors.append(f"missing result pkl: {item.result_path}")
+        return errors
+
+    try:
+        with item.result_path.open("rb") as handle:
+            data = pickle.load(handle, encoding="latin1")
+    except Exception as exc:
+        return [f"cannot read result pkl: {exc}"]
+
+    for key in ("camera_rotation", "camera_translation", "global_orient", "body_pose", "betas"):
+        if key not in data:
+            errors.append(f"missing pkl key: {key}")
+            continue
+        try:
+            values = flatten_numeric(data[key])
+        except Exception as exc:
+            errors.append(f"invalid pkl key {key}: {exc}")
+            continue
+        if not values:
+            errors.append(f"empty pkl key: {key}")
+        bad = sum(1 for value in values if not math.isfinite(value))
+        if bad:
+            errors.append(f"non-finite pkl values in {key}: {bad}/{len(values)}")
+
+    return errors
 
 
 def discover_items(categories: Iterable[CategoryConfig]) -> tuple[list[PoseItem], list[dict[str, str]]]:
@@ -434,10 +486,39 @@ def selected_categories(value: str) -> list[CategoryConfig]:
     return [CATEGORIES[value]]
 
 
-def parse_args() -> argparse.Namespace:
+def load_config_defaults(argv: Sequence[str] | None = None) -> dict[str, object]:
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", type=Path)
+    pre_args, _ = pre_parser.parse_known_args(argv)
+    if pre_args.config is None:
+        return {}
+
+    config_path = pre_args.config.resolve()
+    data = json.loads(config_path.read_text(encoding="utf-8"))
+    if "run_full_pipeline" in data:
+        data = data["run_full_pipeline"]
+    if not isinstance(data, dict):
+        raise ValueError(f"Pipeline config must contain an object: {config_path}")
+
+    return {str(key).replace("-", "_"): value for key, value in data.items()}
+
+
+def resolve_executable(value: str | Path) -> Path:
+    path = Path(value)
+    if path.exists():
+        return path.resolve()
+    if len(path.parts) == 1:
+        found = shutil.which(str(value))
+        if found:
+            return Path(found).resolve()
+    return path.resolve()
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run OpenPose image/keypoint -> SMPLify-X mesh -> Blender render pipeline with per-item resume."
     )
+    parser.add_argument("--config", type=Path, help="Optional JSON config. CLI arguments override values from the file.")
     parser.add_argument("--category", choices=["all", "normal", "complex"], default="all")
     parser.add_argument("--python-exe", type=Path, default=DEFAULT_PYTHON)
     parser.add_argument("--blender-exe", type=Path, default=DEFAULT_BLENDER)
@@ -517,8 +598,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--auto-upright",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Let the Blender renderer flip front/back renders when SMPL-X head landmarks are below the body center.",
+        default=False,
+        help="Optionally flip obvious upside-down front/back renders. Disabled by default to preserve the source bone-structure orientation.",
     )
     parser.add_argument(
         "--debug-output",
@@ -538,13 +619,14 @@ def parse_args() -> argparse.Namespace:
         help="Seconds between live heartbeat messages for long-running subprocesses.",
     )
     parser.add_argument("--keep-work", action="store_true")
-    args = parser.parse_args()
+    parser.set_defaults(**load_config_defaults(argv))
+    args = parser.parse_args(argv)
     args.passes = parse_passes(args.passes)
-    args.python_exe = args.python_exe.resolve()
-    args.blender_exe = args.blender_exe.resolve()
-    args.render_output_root = args.render_output_root.resolve()
-    args.work_root = args.work_root.resolve()
-    args.log_root = args.log_root.resolve()
+    args.python_exe = resolve_executable(args.python_exe)
+    args.blender_exe = resolve_executable(args.blender_exe)
+    args.render_output_root = Path(args.render_output_root).resolve()
+    args.work_root = Path(args.work_root).resolve()
+    args.log_root = Path(args.log_root).resolve()
     return args
 
 
@@ -626,6 +708,7 @@ def main() -> int:
     counts = {
         "fit_ok": 0,
         "fit_skipped": 0,
+        "fit_invalid": 0,
         "fit_error": 0,
         "mesh_missing": 0,
         "render_ok": 0,
@@ -719,6 +802,16 @@ def main() -> int:
             print(f"  fit: {fit_status} ({fit_elapsed:.1f}s)")
             continue
 
+        fit_errors = validate_fit_outputs(item)
+        if fit_errors:
+            counts["fit_invalid"] = counts.get("fit_invalid", 0) + 1
+            event["fit_validation_status"] = "invalid"
+            event["fit_validation_errors"] = fit_errors
+            event["render_status"] = "not_attempted_invalid_fit"
+            write_jsonl(events_path, event)
+            print(f"  fit: invalid ({'; '.join(fit_errors[:2])})")
+            continue
+
         render_status = "render_skipped"
         render_code = 0
         render_elapsed = 0.0
@@ -763,7 +856,7 @@ def main() -> int:
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"Summary: {summary_path}")
 
-    return 1 if counts.get("fit_error") or counts.get("mesh_missing") or counts.get("render_error") or counts.get("render_missing") else 0
+    return 1 if counts.get("fit_error") or counts.get("fit_invalid") or counts.get("mesh_missing") or counts.get("render_error") or counts.get("render_missing") else 0
 
 
 if __name__ == "__main__":
